@@ -59,7 +59,6 @@ def create_produce_task(dag, topic: str):
         dag=dag,
     )
 
-
 with DAG(
     dag_id="stream_tasy_producer",
     description="Escuta SQS (eventos S3 raw_tasy/stream) e produz datasets por tópico",
