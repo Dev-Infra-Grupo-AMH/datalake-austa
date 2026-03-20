@@ -1,0 +1,38 @@
+.git/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Airflow local noise
+airflow/logs/
+airflow/plugins/__pycache__/
+airflow/dags/**/__pycache__/
+
+# dbt artifacts and local files
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+dbt/packages-install-path/
+
+# Secrets and env files
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+secrets.*
+**/secrets/**
+**/*credentials*
+**/*secret*
+
+# Terraform sensitive/state files
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.*
+terraform/*.tfvars

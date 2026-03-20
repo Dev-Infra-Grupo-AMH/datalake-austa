@@ -1,0 +1,50 @@
+name: Deploy Airflow DAGs and dbt
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "airflow/dags/**"
+      - "dbt/**"
+      - ".github/workflows/deploy-airflow-dbt.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
+      - name: Add EC2 host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync DAGs to EC2
+        run: |
+          rsync -az --delete \
+            --exclude "__pycache__/" \
+            --exclude "*.pyc" \
+            airflow/dags/ \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/airflow/dags/"
+
+      - name: Sync dbt to EC2
+        run: |
+          rsync -az --delete \
+            --exclude "target/" \
+            --exclude "logs/" \
+            --exclude ".user.yml" \
+            --exclude "dbt_packages/" \
+            dbt/ \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/airflow/dbt/"
+
+      - name: Validate deployed paths on EC2
+        run: |
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "ls -la /opt/airflow/dags | sed -n '1,30p'; echo; ls -la /opt/airflow/dbt | sed -n '1,30p'"

@@ -1,0 +1,21 @@
+"""
+Configuration module for Airflow DAGs.
+Centralizes environment variables and runtime configuration.
+"""
+import os
+
+# Data Lake
+DATALAKE_BUCKET = os.environ.get("DATALAKE_BUCKET", "austa-lakehouse-prod-data-lake-169446931765")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "sa-east-1")
+
+# Spark / dbt-spark
+SPARK_HOST = os.environ.get("SPARK_HOST", "177.71.255.159")
+SPARK_MASTER_URL = os.environ.get("SPARK_MASTER_URL", "spark://177.71.255.159:7077")
+SPARK_THRIFT_HOST = os.environ.get("SPARK_THRIFT_HOST", "177.71.255.159")
+SPARK_THRIFT_URL = os.environ.get("SPARK_THRIFT_URL", "jdbc:hive2://177.71.255.159:10000/raw")
+SPARK_THRIFT_USER = os.environ.get("SPARK_THRIFT_USER", "")
+SPARK_THRIFT_PASSWORD = os.environ.get("SPARK_THRIFT_PASSWORD", "")
+
+# dbt
+DBT_PROJECT_DIR = os.environ.get("DBT_PROJECT_DIR", "/opt/airflow/dbt")
+DBT_PROFILES_DIR = os.environ.get("DBT_PROFILES_DIR", "/opt/airflow/dbt")

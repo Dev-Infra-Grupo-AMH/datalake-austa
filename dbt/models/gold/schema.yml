@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: gold_dim_paciente
+    description: "Dimensão Paciente — modelo analítico para BI"
+    columns:
+      - name: id_paciente
+        description: "Chave primária"
+        tests:
+          - unique
+          - not_null
+      - name: dt_criacao
+        description: "Data de inserção"

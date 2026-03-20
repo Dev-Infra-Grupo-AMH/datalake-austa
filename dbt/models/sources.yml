@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "Tabelas Bronze (criadas por PySpark)"
+    database: bronze
+    schema: bronze
+    tables:
+      - name: bronze_tasy_paciente
+        description: "Bronze TASY Paciente — CDC do Oracle"

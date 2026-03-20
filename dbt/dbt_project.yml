@@ -1,0 +1,52 @@
+# dbt project - Lakehouse TASY
+# Orquestrado via Airflow Cosmos
+name: "lakehouse_tasy"
+version: "1.0.0"
+config-version: 2
+profile: "lakehouse_tasy"
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  datalake_bucket: "austa-lakehouse-prod-data-lake-169446931765"
+  aws_region: "sa-east-1"
+  fonte_sistema: "tasy"
+  # Paths raw (espelhando dags/common/constants.py)
+  raw_tasy_stream_prefix: "raw/raw-tasy/stream/"
+  raw_tasy_stream_topic_atendimento_paciente: "tasy.TASY.ATENDIMENTO_PACIENTE"
+  raw_tasy_stream_topic_proc_paciente_valor: "tasy.TASY.PROC_PACIENTE_VALOR"
+  raw_tasy_stream_topic_atend_paciente_unidade: "tasy.TASY.ATEND_PACIENTE_UNIDADE"
+  raw_tasy_stream_topic_conta_paciente: "tasy.TASY.CONTA_PACIENTE"
+  raw_tasy_stream_topic_proc_paciente_convenio: "tasy.TASY.PROC_PACIENTE_CONVENIO"
+  raw_tasy_stream_topic_procedimento_paciente: "tasy.TASY.PROCEDIMENTO_PACIENTE"
+  # Coluna de timestamp CDC (Debezium: op_ts ou ts_ms)
+  cdc_timestamp_column: "op_ts"
+
+models:
+  lakehouse_tasy:
+    bronze:
+      +schema: bronze
+      +materialized: table
+      +file_format: iceberg
+    silver:
+      +schema: silver
+      +file_format: iceberg
+      +materialized: table
+    silver_context:
+      +schema: silver_context
+      +file_format: iceberg
+      +materialized: table
+    gold:
+      +schema: gold
+      +file_format: iceberg
+      +materialized: table

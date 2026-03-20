@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: paciente
+    description: "Entidade Paciente — composição de silver_tasy_paciente + endereco + contato"
+    columns:
+      - name: id_paciente
+        description: "Chave primária"
+        tests:
+          - unique
+          - not_null
+      - name: dt_criacao
+        description: "Data de inserção no lakehouse"
+      - name: dt_atualizacao
+        description: "Última atualização"
+      - name: fonte_sistema
+        description: "Sistema de origem"
