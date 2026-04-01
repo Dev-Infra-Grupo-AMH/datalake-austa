@@ -1,0 +1,7 @@
+pyproject.toml
+sitecustomize.py
+lakehouse_dbt_spark_patch.egg-info/PKG-INFO
+lakehouse_dbt_spark_patch.egg-info/SOURCES.txt
+lakehouse_dbt_spark_patch.egg-info/dependency_links.txt
+lakehouse_dbt_spark_patch.egg-info/requires.txt
+lakehouse_dbt_spark_patch.egg-info/top_level.txt

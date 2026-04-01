@@ -1,4 +1,75 @@
-# schema.yml na pasta silver — modelos documentados em silver/tasy/schema.yml
+# Silver TASY: CDC conformance + standardization (macros under dbt/macros/)
 version: 2
 
-models: []
+models:
+  - name: silver_tasy_conta_paciente
+    description: "Silver CONTA_PACIENTE — conformação e padronização sobre bronze_tasy_conta_paciente."
+    tags: ["silver", "tasy", "conta_paciente"]
+    columns:
+      - name: nr_atendimento
+        description: "Chave de negócio (PK lógica)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"
+
+  - name: silver_tasy_atendimento_paciente
+    description: "Silver ATENDIMENTO_PACIENTE — conformação e padronização sobre bronze_tasy_atendimento_paciente."
+    tags: ["silver", "tasy", "atendimento_paciente"]
+    columns:
+      - name: nr_atendimento
+        description: "Chave de negócio (PK lógica)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"
+
+  - name: silver_tasy_atend_paciente_unidade
+    description: "Silver ATEND_PACIENTE_UNIDADE — padronização sobre bronze_tasy_atend_paciente_unidade."
+    tags: ["silver", "tasy", "atend_paciente_unidade"]
+    columns:
+      - name: nr_seq_interno
+        description: "Chave de negócio (PK lógica)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"
+
+  - name: silver_tasy_proc_paciente_convenio
+    description: "Silver PROC_PACIENTE_CONVENIO — colunas e tratamentos definidos no .sql."
+    tags: ["silver", "tasy", "proc_paciente_convenio"]
+    columns:
+      - name: nr_seq_procedimento
+        description: "Chave de negócio (PK lógica, alinhada ao bronze)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"
+
+  - name: silver_tasy_proc_paciente_valor
+    description: "Silver PROC_PACIENTE_VALOR — conformação e padronização sobre bronze."
+    tags: ["silver", "tasy", "proc_paciente_valor"]
+    columns:
+      - name: nr_sequencia
+        description: "Chave de negócio (PK lógica)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"
+
+  - name: silver_tasy_procedimento_paciente
+    description: "Silver PROCEDIMENTO_PACIENTE — conformação e padronização sobre bronze."
+    tags: ["silver", "tasy", "procedimento_paciente"]
+    columns:
+      - name: nr_sequencia
+        description: "Chave de negócio (PK lógica)"
+        tests:
+          - not_null
+          - unique
+      - name: process_at
+        description: "Timestamp do último processamento na camada silver"

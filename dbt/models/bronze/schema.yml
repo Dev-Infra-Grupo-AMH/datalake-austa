@@ -1,91 +1,109 @@
 # Bronze: Raw Avro → Iceberg
 # Paths via vars (dags/common/constants.py). Sem JOINs.
+# Nomes de colunas alinhados ao SELECT dos modelos (minúsculas).
 version: 2
 
 models:
   - name: bronze_tasy_atendimento_paciente
     description: "Bronze TASY ATENDIMENTO_PACIENTE — CDC do Oracle via Kafka (stream Avro)"
     columns:
-      - name: NR_ATENDIMENTO
-        description: "Número do atendimento (PK)"
+      - name: nr_atendimento
+        description: "Número do atendimento (unique_key / merge no Iceberg)"
         tests:
           - not_null
           - unique
-      - name: CD_PESSOA_FISICA
+      - name: cd_pessoa_fisica
         description: "Código da pessoa física (paciente)"
       - name: __op
         description: "Operação CDC (c=create, u=update, d=delete)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
+              values: ["c", "u", "d", "r"]
       - name: __ts_ms
         description: "Timestamp CDC em milissegundos"
         tests:
           - not_null
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
-        description: "Sistema de origem (tasy)"
+      - name: __deleted
+        description: "Flag CDC de registro removido no origem"
+      - name: __source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: partition_path
+        description: "Caminho de partição derivado (raw_path / year / month / day / hour)"
+      - name: create_at
+        description: "Timestamp de carga no lakehouse (bronze)"
+      - name: update_at
+        description: "Timestamp usado no ordenamento de deduplicação CDC"
+      - name: source
+        description: "Sistema de origem (ex. tasy via var fonte_sistema)"
 
   - name: bronze_tasy_proc_paciente_valor
-    description: "Bronze TASY PROC_PACIENTE_VALOR — CDC do Oracle via Kafka (stream Avro)"
+    description: "Bronze TASY PROC_PACIENTE_VALOR — CDC do Oracle via Kafka (stream Avro). Chave de merge composta (nr_seq_procedimento, nr_sequencia)."
     columns:
-      - name: NR_SEQUENCIA
-        description: "Chave de estado atual do procedimento do paciente (valor)"
+      - name: nr_seq_procedimento
+        description: "Identificador do procedimento (parte da chave composta / merge)"
         tests:
           - not_null
-          - unique
+      - name: nr_sequencia
+        description: "Sequência do procedimento no paciente (parte da chave composta / merge)"
+        tests:
+          - not_null
       - name: __op
         description: "Operação CDC (c=create, u=update, d=delete)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
+              values: ["c", "u", "d", "r"]
       - name: __ts_ms
         description: "Timestamp CDC em milissegundos"
         tests:
           - not_null
-      - name: is_deleted
-        description: "Flag de soft delete derivada de __op/__deleted"
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
+      - name: __deleted
+        description: "Flag CDC de registro removido no origem"
+      - name: __source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: partition_path
+        description: "Caminho de partição derivado (raw_path / year / month / day / hour)"
+      - name: create_at
+        description: "Timestamp de carga no lakehouse (bronze)"
+      - name: update_at
+        description: "Timestamp usado no ordenamento de deduplicação CDC"
+      - name: source
         description: "Sistema de origem (tasy)"
 
   - name: bronze_tasy_atend_paciente_unidade
     description: "Bronze TASY ATEND_PACIENTE_UNIDADE — CDC do Oracle via Kafka (stream Avro)"
     columns:
-      - name: NR_SEQ_INTERNO
-        description: "Chave técnica do atendimento por unidade (estado atual bronze)"
+      - name: nr_seq_interno
+        description: "Chave técnica do atendimento por unidade (unique_key / merge no Iceberg)"
         tests:
           - not_null
           - unique
-      - name: __op
-        description: "Operação CDC (c=create, u=update, d=delete)"
+      - name: _is_deleted
+        description: "Tombstone CDC (__deleted = 'true') como BOOLEAN"
+      - name: _cdc_op
+        description: "Operação CDC (c=create, u=update, d=delete, r=read)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
-      - name: __ts_ms
-        description: "Timestamp CDC em milissegundos"
+              values: ["c", "u", "d", "r"]
+      - name: _cdc_ts_ms
+        description: "Timestamp CDC em milissegundos (BIGINT; COALESCE 0)"
         tests:
           - not_null
-      - name: is_deleted
-        description: "Flag de soft delete derivada de __op/__deleted"
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
-        description: "Sistema de origem (tasy)"
+      - name: _cdc_event_at
+        description: "Instante CDC derivado de __ts_ms (segundos → TIMESTAMP)"
+      - name: _cdc_source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: _source_path
+        description: "Caminho S3 raw (literal) do stream Avro"
+      - name: _row_hash
+        description: "MD5 do JSON do STRUCT das colunas negociais (detecção de mudança de conteúdo)"
+      - name: _bronze_loaded_at
+        description: "Timestamp de carga do registro na camada bronze"
 
   - name: bronze_tasy_conta_paciente
     description: "Bronze TASY CONTA_PACIENTE — CDC do Oracle via Kafka (stream Avro)"
     columns:
-      - name: NR_ATENDIMENTO
-        description: "Numero do atendimento usado como chave de estado atual"
+      - name: nr_atendimento
+        description: "Número do atendimento (unique_key / merge no Iceberg)"
         tests:
           - not_null
           - unique
@@ -93,25 +111,29 @@ models:
         description: "Operação CDC (c=create, u=update, d=delete)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
+              values: ["c", "u", "d", "r"]
       - name: __ts_ms
         description: "Timestamp CDC em milissegundos"
         tests:
           - not_null
-      - name: is_deleted
-        description: "Flag de soft delete derivada de __op/__deleted"
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
-        description: "Sistema de origem (tasy)"
+      - name: __deleted
+        description: "Flag CDC de registro removido no origem"
+      - name: __source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: partition_path
+        description: "Caminho de partição derivado (raw_path / year / month / day / hour)"
+      - name: create_at
+        description: "Timestamp de carga no lakehouse (bronze)"
+      - name: update_at
+        description: "Timestamp usado no ordenamento de deduplicação CDC"
+      - name: source
+        description: "Sistema de origem (ex. tasy via var fonte_sistema)"
 
   - name: bronze_tasy_proc_paciente_convenio
     description: "Bronze TASY PROC_PACIENTE_CONVENIO — CDC do Oracle via Kafka (stream Avro)"
     columns:
-      - name: NR_SEQUENCIA
-        description: "Chave de estado atual do procedimento do paciente (convenio)"
+      - name: nr_seq_procedimento
+        description: "Identificador do procedimento (unique_key / merge no Iceberg)"
         tests:
           - not_null
           - unique
@@ -119,25 +141,29 @@ models:
         description: "Operação CDC (c=create, u=update, d=delete)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
+              values: ["c", "u", "d", "r"]
       - name: __ts_ms
         description: "Timestamp CDC em milissegundos"
         tests:
           - not_null
-      - name: is_deleted
-        description: "Flag de soft delete derivada de __op/__deleted"
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
+      - name: __deleted
+        description: "Flag CDC de registro removido no origem"
+      - name: __source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: partition_path
+        description: "Caminho de partição derivado (raw_path / year / month / day / hour)"
+      - name: create_at
+        description: "Timestamp de carga no lakehouse (bronze)"
+      - name: update_at
+        description: "Timestamp usado no ordenamento de deduplicação CDC"
+      - name: source
         description: "Sistema de origem (tasy)"
 
   - name: bronze_tasy_procedimento_paciente
     description: "Bronze TASY PROCEDIMENTO_PACIENTE — CDC do Oracle via Kafka (stream Avro)"
     columns:
-      - name: NR_SEQUENCIA
-        description: "Chave de estado atual do procedimento do paciente"
+      - name: nr_sequencia
+        description: "Chave de estado atual do procedimento do paciente (unique_key / merge no Iceberg)"
         tests:
           - not_null
           - unique
@@ -145,16 +171,20 @@ models:
         description: "Operação CDC (c=create, u=update, d=delete)"
         tests:
           - accepted_values:
-              values: ['c', 'u', 'd', 'r']
+              values: ["c", "u", "d", "r"]
       - name: __ts_ms
         description: "Timestamp CDC em milissegundos"
         tests:
           - not_null
-      - name: is_deleted
-        description: "Flag de soft delete derivada de __op/__deleted"
-      - name: dt_criacao
-        description: "Data de inserção no lakehouse"
-      - name: dt_atualizacao_lakehouse
-        description: "Última atualização no lakehouse"
-      - name: fonte_sistema
+      - name: __deleted
+        description: "Flag CDC de registro removido no origem"
+      - name: __source_table
+        description: "Tabela de origem informada pelo conector CDC"
+      - name: partition_path
+        description: "Caminho de partição derivado (raw_path / year / month / day / hour)"
+      - name: create_at
+        description: "Timestamp de carga no lakehouse (bronze)"
+      - name: update_at
+        description: "Timestamp usado no ordenamento de deduplicação CDC"
+      - name: source
         description: "Sistema de origem (tasy)"

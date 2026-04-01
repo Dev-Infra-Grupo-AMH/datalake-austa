@@ -18,22 +18,10 @@ clean-targets:
   - "dbt_packages"
 
 vars:
-  datalake_bucket: "austa-lakehouse-prod-data-lake-169446931765"
-  aws_region: "sa-east-1"
-  fonte_sistema: "tasy"
   # CDC Bronze
   cdc_lookback_hours: 2
   cdc_reprocess_hours: 0
-  # Paths raw (espelhando dags/common/constants.py)
-  raw_tasy_stream_prefix: "raw/raw-tasy/stream/"
-  raw_tasy_stream_topic_atendimento_paciente: "tasy.TASY.ATENDIMENTO_PACIENTE"
-  raw_tasy_stream_topic_proc_paciente_valor: "tasy.TASY.PROC_PACIENTE_VALOR"
-  raw_tasy_stream_topic_atend_paciente_unidade: "tasy.TASY.ATEND_PACIENTE_UNIDADE"
-  raw_tasy_stream_topic_conta_paciente: "tasy.TASY.CONTA_PACIENTE"
-  raw_tasy_stream_topic_proc_paciente_convenio: "tasy.TASY.PROC_PACIENTE_CONVENIO"
-  raw_tasy_stream_topic_procedimento_paciente: "tasy.TASY.PROCEDIMENTO_PACIENTE"
-  # Coluna de timestamp CDC (Debezium: op_ts ou ts_ms)
-  cdc_timestamp_column: "op_ts"
+
 
 models:
   lakehouse_tasy:

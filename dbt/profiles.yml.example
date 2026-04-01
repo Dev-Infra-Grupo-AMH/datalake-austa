@@ -1,11 +1,9 @@
-# Copie para profiles.yml (na mesma pasta do dbt_project.yml) e use com DBT_PROFILES_DIR.
-# Credenciais vêm do .env — não commite profiles.yml se preferir overrides locais.
-#
-# Uso local:
+# Copie para profiles.yml (mesma pasta que dbt_project.yml).
 #   cp profiles.yml.example profiles.yml
-#   export DBT_PROFILES_DIR="$(pwd)"
-#   set -a && source .env && set +a
-#   dbt debug
+# Credenciais ficam no .env (SPARK_THRIFT_*) — não commite profiles.yml com overrides sensíveis.
+#
+# Com o pacote plugins/sitecustomize instalado, DBT_PROFILES_DIR e .env costumam ser resolvidos
+# automaticamente ao rodar o dbt dentro da árvore do repositório.
 
 lakehouse_tasy:
   target: dev
@@ -19,8 +17,8 @@ lakehouse_tasy:
       port: "{{ env_var('SPARK_THRIFT_PORT', '10009') | as_number }}"
       user: "{{ env_var('SPARK_THRIFT_USER') }}"
       password: "{{ env_var('SPARK_THRIFT_PASSWORD') }}"
-      connect_timeout: 60
-      connect_retries: 1
+      connect_timeout: 180
+      connect_retries: 5
       retry_all: true
       server_side_parameters:
         "kyuubi.engine.share.level.subdomain": "dbt"
@@ -28,3 +26,9 @@ lakehouse_tasy:
         "spark.sql.catalog.spark_catalog": "org.apache.iceberg.spark.SparkSessionCatalog"
         "spark.sql.catalog.spark_catalog.type": "hive"
         "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+        "spark.network.timeout": "900s"
+        "spark.rpc.askTimeout": "900s"
+        "spark.rpc.lookupTimeout": "300s"
+        "spark.executor.heartbeatInterval": "60s"
+        "spark.sql.adaptive.enabled": "true"
+        "spark.sql.adaptive.coalescePartitions.enabled": "true"

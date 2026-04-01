@@ -4,6 +4,8 @@
 __pycache__/
 *.py[cod]
 *.pyo
+.venv/
+venv/
 
 # Airflow local noise
 airflow/logs/
@@ -16,6 +18,8 @@ dbt/logs/
 dbt/dbt_packages/
 dbt/.user.yml
 dbt/packages-install-path/
+# dbt: perfil local (cópia de profiles.yml.example com possíveis ajustes)
+dbt/profiles.yml
 
 # Secrets and env files
 .env
@@ -31,6 +35,8 @@ secrets.*
 **/secrets/**
 **/*credentials*
 **/*secret*
+.cursor
+CLAUDE.md
 
 # Terraform sensitive/state files
 terraform/.terraform/

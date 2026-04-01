@@ -1,8 +1,133 @@
+# Silver-Context: joins entre entidades silver — sem deduplicação.
+# Grão preservado da entidade primária. Enriquecimento via LEFT JOIN.
 version: 2
 
 models:
+  - name: atendimento
+    description: >
+      Visão unificada do atendimento assistencial com sua contrapartida financeira.
+      Join 1:1 entre silver_tasy_atendimento_paciente e silver_tasy_conta_paciente
+      via nr_atendimento. Grão: 1 linha por atendimento.
+      Colunas passam pelos mesmos macros da silver (sentinelas -1, 'i', 'indefinido', datas 1900, etc.),
+      inclusive quando o LEFT JOIN à conta não encontra linha.
+    tags: ["silver_context", "tasy", "atendimento"]
+    columns:
+      - name: nr_atendimento
+        description: "PK — número do atendimento (chave compartilhada atendimento ↔ conta)"
+        tests:
+          - not_null
+          - unique
+      - name: cd_pessoa_fisica
+        description: "Código da pessoa física (paciente)"
+      - name: ie_tipo_atendimento
+        description: "Tipo de atendimento (internação, ambulatório, PA, etc.)"
+      - name: dt_entrada
+        description: "Data/hora de entrada do paciente"
+      - name: dt_alta
+        description: "Data/hora de alta do paciente"
+      - name: ie_status_atendimento
+        description: "Status atual do atendimento"
+      - name: cd_medico_resp
+        description: "Código do médico responsável pelo atendimento"
+      - name: ie_clinica
+        description: "Clínica do atendimento"
+      - name: vl_conta
+        description: "Valor total da conta (proveniente de conta_paciente)"
+      - name: ie_status
+        description: "Status da conta (proveniente de conta_paciente)"
+      - name: conta_cd_estabelecimento
+        description: "Estabelecimento na conta (conta_paciente); distinto de cd_estabelecimento do atendimento"
+      - name: cd_convenio_parametro
+        description: "Convênio de parametrização da conta"
+      - name: ie_complexidade
+        description: "Complexidade da conta (proveniente de conta_paciente)"
+      - name: _context_processed_at
+        description: "Timestamp de processamento na camada silver_context"
+
+  - name: procedimento
+    description: >
+      Procedimento realizado enriquecido com descrição do convênio
+      (proc_paciente_convenio) e contexto assistencial do atendimento.
+      Join: silver_tasy_procedimento_paciente ← proc_paciente_convenio (1:1)
+      ← atendimento_paciente (N:1). Grão: 1 linha por procedimento.
+      Tratamento de nulos alinhado à silver nos joins (convênio e atendimento).
+    tags: ["silver_context", "tasy", "procedimento"]
+    columns:
+      - name: nr_sequencia
+        description: "PK — sequência única do procedimento"
+        tests:
+          - not_null
+          - unique
+      - name: nr_atendimento
+        description: "FK para o atendimento (join com atendimento_paciente)"
+        tests:
+          - not_null
+      - name: cd_procedimento
+        description: "Código do procedimento"
+      - name: ds_procedimento
+        description: "Descrição do procedimento (proveniente de proc_paciente_convenio)"
+      - name: cd_medico
+        description: "Código do médico solicitante"
+      - name: cd_medico_executor
+        description: "Código do médico executor"
+      - name: cd_convenio
+        description: "Código do convênio"
+      - name: cd_especialidade
+        description: "Código da especialidade médica"
+      - name: vl_procedimento
+        description: "Valor total do procedimento"
+      - name: cd_grupo
+        description: "Grupo do procedimento no convênio (proveniente de proc_paciente_convenio)"
+      - name: atend_ie_tipo_atendimento
+        description: "Tipo de atendimento do contexto (internação, ambulatório, PA, etc.)"
+      - name: atend_ie_clinica
+        description: "Clínica do atendimento (contexto)"
+      - name: _context_processed_at
+        description: "Timestamp de processamento na camada silver_context"
+
+  - name: movimentacao_paciente
+    description: >
+      Registro de passagem do paciente por unidade assistencial, enriquecido
+      com contexto do atendimento. Join: silver_tasy_atend_paciente_unidade
+      ← atendimento_paciente (N:1). Grão: 1 linha por passagem em unidade.
+      Tratamento de nulos alinhado à silver no contexto de atendimento.
+    tags: ["silver_context", "tasy", "movimentacao_paciente"]
+    columns:
+      - name: nr_seq_interno
+        description: "PK — sequência interna da passagem por unidade"
+        tests:
+          - not_null
+          - unique
+      - name: nr_atendimento
+        description: "FK para o atendimento"
+        tests:
+          - not_null
+      - name: cd_setor_atendimento
+        description: "Setor/unidade assistencial"
+      - name: dh_entrada_unidade
+        description: "Data/hora de entrada na unidade"
+      - name: dh_saida_unidade
+        description: "Data/hora de saída da unidade"
+      - name: cd_tipo_acomodacao
+        description: "Tipo de acomodação (leito, enfermaria, apartamento, etc.)"
+      - name: cd_departamento
+        description: "Departamento da unidade"
+      - name: nr_seq_motivo_transf
+        description: "Motivo da transferência entre unidades"
+      - name: atend_cd_pessoa_fisica
+        description: "Código do paciente (contexto do atendimento)"
+      - name: atend_ie_tipo_atendimento
+        description: "Tipo de atendimento (contexto — internação, ambulatório, PA, etc.)"
+      - name: atend_ie_clinica
+        description: "Clínica do atendimento (contexto)"
+      - name: _context_processed_at
+        description: "Timestamp de processamento na camada silver_context"
+
   - name: paciente
-    description: "Entidade Paciente — composição de silver_tasy_paciente + endereco + contato"
+    description: >
+      Entidade Paciente — composição de silver_tasy_paciente + endereco + contato.
+      PENDENTE: depende da ingestão CDC das tabelas PESSOA_FISICA, PESSOA_ENDERECO
+      e PESSOA_CONTATO do Tasy.
     columns:
       - name: id_paciente
         description: "Chave primária"

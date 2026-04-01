@@ -1,9 +1,53 @@
-# sitecustomize.py - carregado automaticamente pelo Python ao iniciar
-# Patch: dbt-spark não passa database ao PyHive; injeta database=creds.schema
+# sitecustomize.py — importado pelo Python ao iniciar se estiver no site-packages.
+# Instalação: pip install -r requirements-dbt.txt (pacote editável em ./plugins).
+#
+# 1) DBT_PROFILES_DIR + .env: sem export manual ao rodar dbt a partir da árvore do projeto.
+# 2) Patch dbt-spark: não passa database ao PyHive; injeta database=creds.schema
+def _bootstrap_local_dbt_env():
+    import os
+    from pathlib import Path
+
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        load_dotenv = None
+
+    if os.environ.get("DBT_PROFILES_DIR"):
+        prof = Path(os.environ["DBT_PROFILES_DIR"])
+        if load_dotenv and (prof / ".env").is_file():
+            load_dotenv(prof / ".env", override=False)
+        return
+
+    cwd = Path.cwd()
+    for _ in range(12):
+        if (cwd / "dbt_project.yml").is_file():
+            d = cwd.resolve()
+            os.environ["DBT_PROFILES_DIR"] = str(d)
+            if load_dotenv and (d / ".env").is_file():
+                load_dotenv(d / ".env", override=False)
+            return
+        sub = cwd / "dbt"
+        if (sub / "dbt_project.yml").is_file():
+            d = sub.resolve()
+            os.environ["DBT_PROFILES_DIR"] = str(d)
+            if load_dotenv and (d / ".env").is_file():
+                load_dotenv(d / ".env", override=False)
+            return
+        parent = cwd.parent
+        if parent == cwd:
+            break
+        cwd = parent
+
+
 def _apply_dbt_spark_patch():
+    try:
+        import dbt.adapters.spark.connections as conn_mod
+        from dbt.adapters.spark.connections import SparkConnectionMethod
+    except ImportError:
+        # Ambiente sem dbt-spark ou pip ainda instalando dependências.
+        return
+
     import re
-    import dbt.adapters.spark.connections as conn_mod
-    from dbt.adapters.spark.connections import SparkConnectionMethod
 
     _original_open = conn_mod.SparkConnectionManager.open
 
@@ -98,4 +142,5 @@ def _apply_dbt_spark_patch():
     conn_mod.SparkConnectionManager.open = classmethod(_patched_open)
 
 
+_bootstrap_local_dbt_env()
 _apply_dbt_spark_patch()
