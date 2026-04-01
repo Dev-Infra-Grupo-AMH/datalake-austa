@@ -12,6 +12,9 @@ airflow/logs/
 airflow/plugins/__pycache__/
 airflow/dags/**/__pycache__/
 
+# Logs locais (ex.: dbt na raiz do repo)
+logs/
+
 # dbt artifacts and local files
 dbt/target/
 dbt/logs/
