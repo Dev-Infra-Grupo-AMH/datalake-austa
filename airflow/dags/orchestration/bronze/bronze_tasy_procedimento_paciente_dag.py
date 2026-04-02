@@ -1,20 +1,19 @@
 """
 DAG bronze PROCEDIMENTO_PACIENTE: acionada pelo dataset tasy.PROCEDIMENTO_PACIENTE.
 Quando o stream_tasy_producer emite o dataset (novo Avro em raw/raw-tasy/stream/),
-esta DAG executa o modelo dbt bronze_tasy_procedimento_paciente.
+esta DAG executa o modelo dbt bronze_tasy_procedimento_paciente (Cosmos / dbt-spark).
 """
 from airflow.decorators import dag
-from airflow.operators.bash import BashOperator
 from airflow.utils.dates import days_ago
 
 from common.constants import get_dataset_for_topic
+from common.cosmos_dbt import layer_dbt_task_group
 from common.default_args import DEFAULT_ARGS
 
 TOPIC = "tasy.TASY.PROCEDIMENTO_PACIENTE"
 DATASET = get_dataset_for_topic(TOPIC)
 
-DBT_PROJECT_DIR = "/opt/airflow/dbt"
-PYTHONPATH = "/opt/airflow/dbt/plugins"
+MODEL = "bronze_tasy_procedimento_paciente"
 
 
 @dag(
@@ -25,17 +24,10 @@ PYTHONPATH = "/opt/airflow/dbt/plugins"
     catchup=False,
     is_paused_upon_creation=False,
     default_args=DEFAULT_ARGS,
-    tags=["bronze", "dbt", "tasy", "procedimento_paciente"],
+    tags=["bronze", "dbt", "cosmos", "tasy", "dataset", "procedimento_paciente"],
 )
 def bronze_tasy_procedimento_paciente_dag():
-    run_bronze = BashOperator(
-        task_id="run_bronze_tasy_procedimento_paciente",
-        bash_command=(
-            f"cd {DBT_PROJECT_DIR} && "
-            f"PYTHONPATH={PYTHONPATH} dbt run --select bronze_tasy_procedimento_paciente"
-        ),
-    )
-    run_bronze
+    layer_dbt_task_group("dbt_bronze", [MODEL])
 
 
 bronze_tasy_procedimento_paciente_dag()

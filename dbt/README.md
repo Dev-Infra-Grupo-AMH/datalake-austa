@@ -45,7 +45,7 @@ flowchart TB
 - **Orquestração:** DAG contínua `stream_tasy_producer` (SQS) produz **Airflow Datasets**; cada DAG `bronze_tasy_*` agenda com `schedule=[Dataset]` e executa `dbt run --select` no modelo bronze correspondente.
 - **Transformação:** dbt compila SQL e o Spark executa leituras/escritas Iceberg registradas no Glue.
 
-Leitura detalhada (incluindo nota sobre DAG Cosmos comentada): **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+Leitura detalhada (Airflow + Cosmos + orquestradores): **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ---
 

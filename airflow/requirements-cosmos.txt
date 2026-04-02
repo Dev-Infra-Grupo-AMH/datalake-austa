@@ -1,0 +1,3 @@
+# Dependência Python para DAGs Cosmos (instalar na imagem Airflow / EC2).
+# Ex.: pip install -r airflow/requirements-cosmos.txt
+astronomer-cosmos>=1.5.0,<2.0.0

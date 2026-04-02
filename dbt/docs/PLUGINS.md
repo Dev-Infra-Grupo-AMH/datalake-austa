@@ -40,13 +40,9 @@ Sem esse patch, conexões Thrift + Glue e tabelas Iceberg v2 podem falhar em `db
 
 ## Airflow (EC2)
 
-Nas DAGs bronze (`airflow/dags/orchestration/bronze_tasy_*_dag.py`), o comando define:
+Nas DAGs dbt no Airflow (**Cosmos** `DbtTaskGroup`, ver `airflow/dags/common/cosmos_dbt.py`), o `operator_args` define `env` com **`PYTHONPATH`** incluindo `/opt/airflow/dbt/plugins` (ou `{DBT_PROJECT_DIR}/plugins`), espelhando o que antes era passado no `BashOperator` das bronzes.
 
-```text
-PYTHONPATH=/opt/airflow/dbt/plugins
-```
-
-Assim o mesmo `sitecustomize` (ou módulos em `plugins/`) pode ser carregado no ambiente do worker, garantindo comportamento alinhado ao desenvolvimento local quando o processo Python executa o `dbt`.
+Assim o mesmo `sitecustomize` (ou módulos em `plugins/`) pode ser carregado no worker, alinhado ao desenvolvimento local quando o processo Python executa o `dbt`.
 
 ---
 

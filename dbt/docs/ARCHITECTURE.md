@@ -73,14 +73,14 @@ A DAG **`stream_tasy_producer`**:
 
 Isso alinha com os paths `s3a://.../raw/raw-tasy/stream/tasy.TASY.*` usados nos modelos bronze do dbt.
 
-### 2. Orquestração bronze (`airflow/dags/orchestration/`)
+### 2. Orquestração bronze (`airflow/dags/orchestration/bronze/`)
 
 Para cada entidade Tasy mapeada, existe uma DAG **`bronze_tasy_<entidade>`** que:
 
-- Agenda com **`schedule=[DATASET]`** — ou seja, depende do dataset emitido pelo fluxo acima.
-- Executa **`dbt run --select bronze_tasy_<entidade>`** via `BashOperator`, com `DBT_PROJECT_DIR=/opt/airflow/dbt` e `PYTHONPATH=/opt/airflow/dbt/plugins` (patch/bootstrap no servidor).
+- Agenda com **`schedule=[DATASET]`** — depende do dataset emitido pelo fluxo de streaming.
+- Executa o modelo correspondente via **Astronomer Cosmos** (`DbtTaskGroup`), com configuração central em **`airflow/dags/common/cosmos_dbt.py`** (`LoadMode.DBT_LS`, `PYTHONPATH` para `dbt/plugins`, pool `spark_dbt`).
 
-**Modelos bronze com DAG correspondente (nomes de arquivo `*_dag.py`):**
+**Modelos bronze com DAG correspondente:**
 
 - `bronze_tasy_atendimento_paciente`
 - `bronze_tasy_atend_paciente_unidade`
@@ -89,11 +89,20 @@ Para cada entidade Tasy mapeada, existe uma DAG **`bronze_tasy_<entidade>`** que
 - `bronze_tasy_proc_paciente_valor`
 - `bronze_tasy_procedimento_paciente`
 
-### 3. DAG Cosmos (silver / gold)
+**Bronze em lote:** `airflow/dags/orchestration/bronze_dbt_task_group_all.py` (`path:models/bronze`) — acionada pelo **`master_dbt_orchestrator_batch`** ou manualmente; não participa do orquestrador stream.
 
-O arquivo **`airflow/dags/orchestration/dbt_lakehouse_dag.py`** contém uma DAG **Astronomer Cosmos** comentada (`dbt_lakehouse_tasy`), que rodaria silver / silver_context / gold em conjunto. **No estado atual do repositório ela não está ativa.** Silver e silver_context são executados via **dbt local**, CI ou outra orquestração conforme o time definir.
+### 3. Cosmos — camadas silver / silver_context / gold
 
-A pasta `airflow/dags/README.md` descreve a organização alvo: *raw → bronze → silver → silver_context → gold*.
+- **`silver_dbt_task_group_all`**, **`silver_context_dbt_task_group_all`**: um `DbtTaskGroup` por camada (`path:models/...`), `schedule=None`, disparadas por **`master_dbt_orchestrator_stream`** (cron 30 min) ou pelo batch / manual.
+- **`master_dbt_orchestrator_stream`**: `TriggerDagRunOperator` com `wait_for_completion` na ordem silver → silver_context (gold quando habilitado).
+- **`master_dbt_orchestrator_batch`**: cadeia bronze all → silver → silver_context; opcional passo inicial `dbt run` com `--vars` (`run_cli_first`); gold quando habilitado.
+- **`gold_dbt_task_group_all.py`**: scaffold **comentado** até existirem modelos em `dbt/models/gold/*.sql`; trechos `GOLD_LAYER_TODO` nos dois masters.
+
+O arquivo legado **`airflow/dags/orchestration/dbt_lakehouse_dag.py`** não registra DAG — apenas aponta para os módulos acima.
+
+**Dependência:** `astronomer-cosmos` (ver `airflow/requirements-cosmos.txt`). **Tags Airflow:** [airflow/dags/DAG_TAGS.md](../../airflow/dags/DAG_TAGS.md) (distinto de `tags:` no YAML do dbt).
+
+A pasta `airflow/dags/README.md` resume o layout e o fluxo *raw → bronze → silver → silver_context → gold*.
 
 ---
 
