@@ -18,7 +18,7 @@ MODEL = "bronze_tasy_proc_paciente_valor"
 
 @dag(
     dag_id="bronze_tasy_proc_paciente_valor",
-    description="Bronze PROC_PACIENTE_VALOR: Avro raw → Iceberg (acionada por dataset)",
+    description="Bronze PROC_PACIENTE_VALOR (dataset → Iceberg)",
     schedule=[DATASET],
     start_date=days_ago(1),
     catchup=False,

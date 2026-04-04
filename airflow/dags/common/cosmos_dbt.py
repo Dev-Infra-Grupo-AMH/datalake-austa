@@ -2,6 +2,7 @@
 Configuração compartilhada para DAGs Astronomer Cosmos + dbt-spark (lakehouse Tasy).
 
 LoadMode.DBT_LS: descoberta de nós via `dbt ls` no parse da DAG (evoluir para DBT_MANIFEST no deploy).
+DbtTaskGroup: use `from cosmos import DbtTaskGroup` (reexport do pacote cosmos).
 """
 from __future__ import annotations
 
@@ -9,9 +10,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from cosmos import DbtTaskGroup
 from cosmos.config import ProfileConfig, ProjectConfig, RenderConfig
 from cosmos.constants import LoadMode
-from cosmos.operators.local import DbtTaskGroup
 
 from common.config import DBT_PROJECT_DIR, DBT_PROFILES_DIR
 
@@ -38,7 +39,13 @@ def render_config_for_select(select: list[str]) -> RenderConfig:
 
 
 def dbt_operator_args() -> Dict[str, Any]:
-    """Env com PYTHONPATH para `dbt/plugins` (sitecustomize / perfil), pool Kyuubi."""
+    """Argumentos dos operadores Cosmos (dbt-spark).
+
+    Env com PYTHONPATH para `dbt/plugins` (sitecustomize / perfil).
+
+    - **pool** `spark_dbt`: limita concorrência global de jobs dbt+Kyuubi (poucos slots).
+    - **queue** `dbt`: encaminha para o worker Celery `airflow-worker-dbt` (Compose EC2).
+    """
     merged = os.environ.copy()
     plugins = str(Path(DBT_PROJECT_DIR).resolve() / "plugins")
     prev = merged.get("PYTHONPATH", "")
@@ -46,6 +53,7 @@ def dbt_operator_args() -> Dict[str, Any]:
     return {
         "install_deps": False,
         "pool": "spark_dbt",
+        "queue": "dbt",
         "env": merged,
     }
 

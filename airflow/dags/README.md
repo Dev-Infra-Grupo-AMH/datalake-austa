@@ -44,6 +44,12 @@ Pool recomendado na UI Airflow: **`spark_dbt`** (slots conforme capacidade Kyuub
 
 Variáveis úteis: `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, `DBT_TARGET` (target do `profiles.yml`).
 
+## Pools, filas Celery e workers
+
+- Tasks **Cosmos dbt** (`common/cosmos_dbt.py`): **`pool=spark_dbt`**, **`queue=dbt`** → executam no worker Docker com mais RAM (`airflow-worker-dbt`).
+- Tasks leves (streaming, triggers): fila **default**.
+- Guia de operação (EC2, Compose, comandos): **[`../docs/AIRFLOW_OPERACAO.md`](../docs/AIRFLOW_OPERACAO.md)**.
+
 ## Fluxo
 
 1. **streaming** → emite **Dataset** por tópico quando há evento no S3 raw.
