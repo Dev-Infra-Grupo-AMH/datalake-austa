@@ -22,6 +22,11 @@ vars:
   cdc_lookback_hours: 2
   cdc_reprocess_hours: 0
 
+  # dim_tempo — range do calendário global
+  # Para expandir: atualizar dim_tempo_end_date e executar `dbt build --select dim_tempo`
+  dim_tempo_start_date: '2010-01-01'
+  dim_tempo_end_date:   '2030-01-01'
+
 
 models:
   lakehouse_tasy:
