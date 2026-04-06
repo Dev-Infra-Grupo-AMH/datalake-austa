@@ -1,15 +1,13 @@
 """
 Orquestrador operacional (agendado): a cada hora processa o lakehouse na ordem canônica.
 
-Fluxo: bronze (todos os modelos) → silver → silver_context [→ gold quando ativado].
-Serve para incorporar dados que chegaram no raw desde a última janela CDC — não é só manutenção/backfill.
-
-- `schedule`: 1 hora.
-- Opcional: `run_cli_first=true` no conf/param para um `dbt run` CLI com --vars antes dos triggers (ex.: pré-aquecer bronze com janela CDC).
+Fluxo padrão (sem config): bronze (todos) → silver → silver_context [→ gold quando ativado].
+Opcional: passo extra de `dbt run` com --vars antes do bronze (reprocesso / janela CDC customizada).
 """
 from datetime import timedelta
 
 from airflow.decorators import dag
+from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator
@@ -20,30 +18,97 @@ from common.config import DBT_PROFILE_NAME, DBT_PROJECT_DIR, DBT_TARGET
 from common.default_args import DEFAULT_ARGS
 
 
+def _truthy_run_cli_first(conf: dict, params: dict) -> bool:
+    """True só se run_cli_first vier explicitamente como verdadeiro (conf ou params)."""
+    for src in (conf, params):
+        v = src.get("run_cli_first") if isinstance(src, dict) else None
+        if v is True:
+            return True
+        if isinstance(v, str) and v.strip().lower() in ("1", "true", "yes", "on"):
+            return True
+    return False
+
+
 def _pick_cli_branch(**context):
-    conf = context["dag_run"].conf or {}
-    if conf.get("run_cli_first") or context["params"].get("run_cli_first"):
+    conf = context["dag_run"].conf
+    if conf is None:
+        conf = {}
+    if not isinstance(conf, dict):
+        conf = {}
+    params = context.get("params") or {}
+    if _truthy_run_cli_first(conf, params):
         return "dbt_run_with_vars"
     return "skip_cli_before_triggers"
 
 
+_DBT_CLI_PREFIX = (
+    f"cd {DBT_PROJECT_DIR} && PYTHONPATH={DBT_PROJECT_DIR}/plugins dbt run "
+    f"--profile {DBT_PROFILE_NAME} --target {DBT_TARGET} "
+)
+
+_MASTER_DOC_MD = """
+## Execução normal (rotina)
+
+- **Trigger manual sem JSON** ou com `{}` → segue o mesmo fluxo do agendamento: dispara **bronze all → silver → silver_context**.
+- Não é obrigatório preencher nada no formulário de parâmetros.
+
+## Reprocessamento / janela CDC (opcional)
+
+1. Marque **`run_cli_first`** = `True` (ou no JSON de conf abaixo).
+2. Ajuste **`cdc_lookback_hours`** / **`cdc_reprocess_hours`** e, se precisar, **`dbt_select`** (default: `path:models/bronze`).
+
+Exemplo de **JSON Configuration** ao disparar o DAG:
+
+```json
+{
+  "run_cli_first": true,
+  "cdc_lookback_hours": 48,
+  "cdc_reprocess_hours": 24,
+  "dbt_select": "path:models/bronze"
+}
+```
+
+As DAGs Cosmos (bronze/silver/silver_context) continuam usando os defaults do `dbt_project.yml`, salvo o passo CLI opcional acima.
+"""
+
+
 @dag(
     dag_id="master_dbt_orchestrator_batch",
-    description="Lakehouse horário: bronze all → silver → silver_context; dados novos a cada 1h",
+    description="Lakehouse: bronze all → silver → silver_context (1h ou manual); parâmetros só para reprocesso opcional",
     schedule=timedelta(hours=1),
     start_date=days_ago(1),
     catchup=False,
     is_paused_upon_creation=False,
     default_args=DEFAULT_ARGS,
+    doc_md=_MASTER_DOC_MD,
     params={
-        "run_cli_first": False,
-        "dbt_project_dir": DBT_PROJECT_DIR,
-        "dbt_plugins": f"{DBT_PROJECT_DIR}/plugins",
-        "dbt_profile_name": DBT_PROFILE_NAME,
-        "dbt_target": DBT_TARGET,
-        "dbt_select": "path:models/bronze",
-        "cdc_lookback_hours": 2,
-        "cdc_reprocess_hours": 0,
+        "run_cli_first": Param(
+            False,
+            type="boolean",
+            title="Rodar dbt CLI antes do bronze",
+            description=(
+                "Desligado = fluxo padrão (só triggers Cosmos). "
+                "Ligado = um `dbt run` com --vars (CDC) antes de bronze/silver/silver_context."
+            ),
+        ),
+        "dbt_select": Param(
+            "path:models/bronze",
+            type="string",
+            title="dbt --select (só com CLI)",
+            description="Seleção dbt usada apenas quando 'Rodar dbt CLI antes do bronze' está ligado.",
+        ),
+        "cdc_lookback_hours": Param(
+            2,
+            type="integer",
+            title="cdc_lookback_hours",
+            description="Só afeta o passo CLI opcional (--vars). Rotina Cosmos usa `dbt_project.yml`.",
+        ),
+        "cdc_reprocess_hours": Param(
+            0,
+            type="integer",
+            title="cdc_reprocess_hours",
+            description="Só afeta o passo CLI opcional (--vars).",
+        ),
     },
     tags=["orchestrator", "batch", "lakehouse", "dbt", "hourly", "scheduled"],
 )
@@ -58,11 +123,10 @@ def master_dbt_orchestrator_batch_dag():
         pool="spark_dbt",
         queue="dbt",
         bash_command=(
-            "cd {{ params.dbt_project_dir }} && PYTHONPATH={{ params.dbt_plugins }} "
-            "dbt run --select '{{ params.dbt_select or \"path:models/bronze\" }}' "
-            "--profile {{ params.dbt_profile_name }} --target {{ params.dbt_target }} "
-            "--vars '{{ dict(cdc_lookback_hours=params.cdc_lookback_hours, "
-            "cdc_reprocess_hours=params.cdc_reprocess_hours) | tojson }}'"
+            _DBT_CLI_PREFIX
+            + "--select '{{ params.dbt_select or \"path:models/bronze\" }}' "
+            + "--vars '{{ dict(cdc_lookback_hours=params.cdc_lookback_hours, "
+            + "cdc_reprocess_hours=params.cdc_reprocess_hours) | tojson }}'"
         ),
     )
 
