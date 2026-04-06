@@ -13,6 +13,7 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.utils.dates import days_ago
+from airflow.utils.trigger_rule import TriggerRule
 
 from common.config import DBT_PROFILE_NAME, DBT_PROJECT_DIR, DBT_TARGET
 from common.default_args import DEFAULT_ARGS
@@ -51,6 +52,7 @@ _MASTER_DOC_MD = """
 
 - **Trigger manual sem JSON** ou com `{}` → segue o mesmo fluxo do agendamento: dispara **bronze all → silver → silver_context**.
 - Não é obrigatório preencher nada no formulário de parâmetros.
+- A task `skip_cli_before_triggers` **só pula o passo opcional** `dbt run` na CLI; **não** pula bronze/silver/silver_context (isso exige `trigger_rule` especial após o branch — já configurado na DAG).
 
 ## Reprocessamento / janela CDC (opcional)
 
@@ -136,6 +138,8 @@ def master_dbt_orchestrator_batch_dag():
         wait_for_completion=True,
         poke_interval=30,
         reset_dag_run=False,
+        # Após branch: um upstream fica skipped; all_success faria pular o trigger inteiro.
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
     trigger_silver = TriggerDagRunOperator(
         task_id="trigger_silver_dbt_task_group_all",
