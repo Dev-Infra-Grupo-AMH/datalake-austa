@@ -80,8 +80,8 @@ WITH date_spine AS (
 
 -- ── Feriados nacionais brasileiros — fixos + móveis ───────────────────────────
 , feriados AS (
-    -- Fixos
-    SELECT yr, TO_DATE(CONCAT(yr, '-01-01')), 'Confraternização Universal (Ano Novo)'  FROM years
+    -- Fixos (aliases explícitos — Spark não expõe col1/col2 no UNION)
+    SELECT yr, TO_DATE(CONCAT(yr, '-01-01')) AS dt_feriado, 'Confraternização Universal (Ano Novo)' AS nm_feriado FROM years
     UNION ALL SELECT yr, TO_DATE(CONCAT(yr, '-04-21')), 'Tiradentes'                   FROM years
     UNION ALL SELECT yr, TO_DATE(CONCAT(yr, '-05-01')), 'Dia do Trabalho'              FROM years
     UNION ALL SELECT yr, TO_DATE(CONCAT(yr, '-09-07')), 'Independência do Brasil'      FROM years
@@ -103,10 +103,7 @@ WITH date_spine AS (
         dt_feriado
       , nm_feriado
       , ROW_NUMBER() OVER (PARTITION BY dt_feriado ORDER BY nm_feriado) AS rn
-    FROM (
-        SELECT col1 AS dt_feriado, col2 AS nm_feriado
-        FROM feriados
-    )
+    FROM feriados
 )
 
 -- ── Base calendário com atributos calculados ──────────────────────────────────
