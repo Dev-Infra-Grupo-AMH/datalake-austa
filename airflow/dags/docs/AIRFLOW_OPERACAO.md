@@ -24,13 +24,16 @@ Scheduler / Webserver / Triggerer
 | `airflow-worker` | `celery worker -q default,stream` | `default`, `stream` | ~1,4 GiB |
 | `airflow-worker-dbt` | `celery worker -q dbt` | `dbt` | ~4 GiB |
 
-**Regra:** qualquer task **pesada de dbt** (Cosmos ou `BashOperator` com `dbt run` / `dbt test`) deve usar **`queue="dbt"`** para rodar no worker com mais memória.
+**Regra geral:** Cosmos / camadas (`silver`, `silver_context`, `bronze_dbt_task_group_all`) → **`queue="dbt"`** no worker com mais RAM.
+
+**Exceção (latência):** bronzes **por evento** (`bronze_tasy_*` com dataset) usam **`BashOperator`** + **`queue="default"`** + pool **`bronze_stream`** — um só `dbt run` por DAG, sem Cosmos (sem `dbt ls` no parse nem task `.test`), até **3 em paralelo** (slots do pool), sem competir com **`spark_dbt`**.
 
 **Onde está no código**
 
-- Cosmos: `common/cosmos_dbt.py` → `dbt_operator_args()` define `pool` e `queue`.
+- Cosmos: `common/cosmos_dbt.py` → `pool` + `queue` para camadas.
+- Bronze stream: `common/bronze_stream_dbt.py` + DAGs `bronze_tasy_*`.
 - Smoke dbt: `observability/lakehouse_dbt_tests_smoke_dag.py`.
-- Batch opcional CLI: `orchestration/master_dbt_orchestrator_batch.py` → task `dbt_run_with_vars`.
+- Batch opcional CLI: `orchestration/master_dbt_orchestrator_batch.py` → `dbt_run_with_vars`.
 
 Tasks leves (triggers, Python, sensors, branch) usam a fila **default** (implícita).
 
@@ -41,7 +44,8 @@ Pools limitam **quantas tasks com o mesmo pool** podem estar **rodando ao mesmo 
 | Pool | Slots (padrão init) | Uso |
 |------|----------------------|-----|
 | `default_pool` | 128 (padrão Airflow) | Tasks sem `pool` explícito ou explícito `default_pool`. |
-| `spark_dbt` | **1** | **Todas** as execuções dbt-spark via Cosmos + bash dbt que definimos (`pool="spark_dbt"`). Evita vários `dbt run` em paralelo no mesmo host (OOM / Kyuubi). |
+| `bronze_stream` | **3** | Bronzes **por dataset** (`bronze_tasy_*`): `dbt run` Bash na fila **default**; paralelismo limitado para não martelar Kyuubi/RAM do `airflow-worker`. |
+| `spark_dbt` | **1** | Cosmos (silver, silver_context, `bronze_dbt_task_group_all`) + smoke + bash batch opcional. Não partilha slots com `bronze_stream`. |
 
 **Removido / obsoleto**
 
@@ -60,7 +64,8 @@ Atualize também o comando em `docker-compose.yaml` (serviço `airflow-init`) pa
 | Ficheiro | Conteúdo relevante |
 |----------|-------------------|
 | `/opt/airflow/docker-compose.yaml` | Limites de memória, workers, **comando `airflow-init`** (migrate, user, pools). |
-| `dags/common/cosmos_dbt.py` | `pool` + `queue` dos operadores Cosmos. |
+| `dags/common/cosmos_dbt.py` | `pool` + `queue` dos operadores Cosmos (camadas). |
+| `dags/common/bronze_stream_dbt.py` | Constantes/env para bronzes por evento (Bash). |
 | `dags/README.md` | Mapa de DAGs e fluxo lakehouse. |
 
 **Repositório Git:** cópia canónica também em **`airflow/docs/AIRFLOW_OPERACAO.md`**. Este ficheiro em **`dags/docs/`** é incluído no rsync de DAGs para o EC2.
@@ -69,7 +74,8 @@ Atualize também o comando em `docker-compose.yaml` (serviço `airflow-init`) pa
 
 | Área | DAGs (exemplos) | Pool / fila |
 |------|-----------------|-------------|
-| Bronze / silver / silver_context / gold (Cosmos) | `*_dbt_task_group_all`, `bronze_tasy_*` | `spark_dbt` + `dbt` (via `cosmos_dbt`) |
+| Bronze por evento | `bronze_tasy_*` | **`bronze_stream`** + fila **`default`** (Bash `dbt run`) |
+| Bronze/silver camadas (Cosmos) | `bronze_dbt_task_group_all`, `silver_*`, `gold` (ativo) | `spark_dbt` + `dbt` (`cosmos_dbt`) |
 | Smoke dbt | `lakehouse_dbt_tests_smoke` | `spark_dbt` + `dbt` |
 | Batch CLI dbt | `master_dbt_orchestrator_batch` → `dbt_run_with_vars` | `spark_dbt` + `dbt` |
 | Orquestradores (só triggers) | `master_dbt_orchestrator_stream`, resto do batch | `default` |
@@ -84,7 +90,8 @@ docker exec airflow-scheduler airflow tasks states-for-dag-run <dag_id> <run_id>
 
 ## 7. Decisões de desenho (histórico curto)
 
-- **`spark_dbt` com 1 slot:** após **SIGKILL (-9)** por falta de memória com vários modelos dbt em paralelo no mesmo worker.
-- **Fila `dbt` dedicada:** isola execução pesada no container com **mais RAM** (`airflow-worker-dbt`).
+- **`spark_dbt` com 1 slot:** após **SIGKILL (-9)** com vários Cosmos em paralelo no worker dbt.
+- **Fila `dbt` dedicada:** Cosmos / batch pesado no `airflow-worker-dbt`.
+- **Bronze stream fora do Cosmos:** evita fila única com silver e parse `dbt ls` por DAG; trade-off: vários `dbt run` no **`airflow-worker`** — se houver OOM, baixar slots de **`bronze_stream`** (ex.: 2) ou subir RAM do worker default.
 
-Para escalar: primeiro **aumentar RAM** do EC2 e do `airflow-worker-dbt`, depois **subir slots** do pool com cautela e monitorizar Kyuubi.
+Para escalar: **RAM** dos workers, depois ajustar slots **`bronze_stream`** e **`spark_dbt`** com monitorização Kyuubi.
