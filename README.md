@@ -7,6 +7,10 @@ Repositório de **orquestração** (Airflow) e **transformações** (dbt) do lak
 | DAGs do Airflow | [`airflow/dags/`](airflow/dags/) | DAGs Python em `dags/` |
 | Projeto dbt | [`dbt/`](dbt/) | **[dbt/README.md](dbt/README.md)** — como rodar o dbt na sua máquina local |
 
+## Pull requests
+
+Cada PR abre com um [template](.github/pull_request_template.md) que pergunta se a alteração é **feature** ou **bugfix** (organização prévia; ainda sem Gitflow completo). Convenções opcionais: [docs/git-fluxo-previo.md](docs/git-fluxo-previo.md).
+
 ## Deploy na EC2
 
 Push na branch **`main`** dispara o pipeline GitHub Actions que sincroniza `airflow/dags/` e `dbt/` para `/opt/airflow/` no servidor.
