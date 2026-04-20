@@ -42,9 +42,19 @@ def _dbt_env_vars() -> dict[str, str]:
 def get_project_config() -> ProjectConfig:
     project_path = Path(DBT_PROJECT_DIR).resolve()
     manifest_path = project_path / "target" / "manifest.json"
+    if manifest_path.exists():
+        return ProjectConfig(
+            dbt_project_path=str(project_path),
+            manifest_path=str(manifest_path),
+            env_vars=_dbt_env_vars(),
+        )
+
+    logger.warning(
+        "Manifest dbt não encontrado em %s; fallback para DBT_LS no parse da DAG.",
+        manifest_path,
+    )
     return ProjectConfig(
         dbt_project_path=str(project_path),
-        manifest_path=str(manifest_path),
         env_vars=_dbt_env_vars(),
     )
 
@@ -79,8 +89,9 @@ def get_profile_config() -> ProfileConfig:
 
 
 def render_config_for_select(select: list[str]) -> RenderConfig:
+    manifest_path = Path(DBT_PROJECT_DIR).resolve() / "target" / "manifest.json"
     return RenderConfig(
-        load_method=LoadMode.DBT_MANIFEST,
+        load_method=LoadMode.DBT_MANIFEST if manifest_path.exists() else LoadMode.DBT_LS,
         select=select,
     )
 
