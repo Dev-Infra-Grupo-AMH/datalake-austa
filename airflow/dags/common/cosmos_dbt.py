@@ -124,5 +124,4 @@ def layer_dbt_task_group(group_id: str, select: list[str]) -> DbtTaskGroup:
         profile_config=get_profile_config(),
         render_config=render_config_for_select(select),
         operator_args=dbt_operator_args(),
-        test_indirect_selection=None,
     )
