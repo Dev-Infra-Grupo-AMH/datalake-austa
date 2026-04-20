@@ -4,9 +4,11 @@ DAG de compactacao dos AVROs raw por topico.
 Agendada a cada 30 minutos (e disparavel pelo master batch):
 
 1) ranking dos topicos pelo AVRO mais recente;
-2) compactacao in-place (~128 MB por ficheiro alvo) no mesmo prefixo S3 que a bronze consome,
+2) scp do raw_avro_compaction_job.py (dags/files) para a EC2 Spark — evita script antigo sem novos flags;
+3) compactacao in-place (~128 MB por ficheiro alvo) no mesmo prefixo S3 que a bronze consome,
    usando a hora de particao do AVRO mais recente por topico (dados reais no S3), nao a data do Airflow.
 """
+import os
 from datetime import timedelta
 
 from airflow.decorators import dag
@@ -35,6 +37,7 @@ _SSH_OPTS = "-o BatchMode=yes -o StrictHostKeyChecking=no"
 _SSH_KEY = get_spark_ssh_key_path()
 _SSH_BASE = f'ssh -i {_SSH_KEY} {_SSH_OPTS} {SPARK_SSH_USER}@{SPARK_HOST} '
 _SPARK_SUBMIT_REMOTE = "/opt/spark/bin/spark-submit"
+_REMOTE_SCRIPT_DIR = os.path.dirname(SPARK_REMOTE_COMPACTION_SCRIPT)
 
 
 @dag(
@@ -62,6 +65,17 @@ def raw_tasy_avro_compactor_dag():
         queue="default",
     )
 
+    # Garante na EC2 a mesma versao do job que o repositorio (flags como --partition-from-latest-avro).
+    sync_compaction_script_to_spark = BashOperator(
+        task_id="sync_compaction_script_to_spark",
+        bash_command=(
+            f'{_SSH_BASE}"mkdir -p {_REMOTE_SCRIPT_DIR}" && '
+            f'scp -i {_SSH_KEY} {_SSH_OPTS} {_JOB_LOCAL} '
+            f'{SPARK_SSH_USER}@{SPARK_HOST}:{SPARK_REMOTE_COMPACTION_SCRIPT}'
+        ),
+        queue="default",
+    )
+
     # Compactacao: obrigatoriamente spark-submit na maquina Spark (nao no container Airflow).
     compact_last_hour = BashOperator(
         task_id="compact_last_hour",
@@ -79,7 +93,7 @@ def raw_tasy_avro_compactor_dag():
         queue="default",
     )
 
-    report_latest_files >> compact_last_hour
+    report_latest_files >> sync_compaction_script_to_spark >> compact_last_hour
 
 
 raw_tasy_avro_compactor_dag()
