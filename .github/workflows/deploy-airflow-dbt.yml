@@ -55,6 +55,17 @@ jobs:
             sudo rsync -az --delete /tmp/austa-dbt/ /opt/airflow/dbt/ && \
             sudo rm -rf /tmp/austa-dbt"
 
+      - name: Sync dbt manifest to EC2
+        run: |
+          rsync -az \
+            dbt/target/manifest.json \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/austa-manifest.json"
+
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "\
+            sudo mkdir -p /opt/airflow/dbt/target && \
+            sudo mv /tmp/austa-manifest.json /opt/airflow/dbt/target/manifest.json && \
+            sudo chown 1000:1000 /opt/airflow/dbt/target/manifest.json"
+
       - name: Validate deployed paths on EC2
         run: |
-          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "sudo ls -la /opt/airflow/dags | sed -n '1,30p'; echo; sudo ls -la /opt/airflow/dbt | sed -n '1,30p'"
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "sudo ls -la /opt/airflow/dags | sed -n '1,30p'; echo; sudo ls -la /opt/airflow/dbt | sed -n '1,30p'; echo; sudo ls -la /opt/airflow/dbt/target/manifest.json"
