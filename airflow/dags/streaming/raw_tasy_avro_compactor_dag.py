@@ -4,7 +4,8 @@ DAG de compactacao dos AVROs raw por topico.
 Agendada a cada 30 minutos (e disparavel pelo master batch):
 
 1) ranking dos topicos pelo AVRO mais recente;
-2) compactacao in-place da ultima hora (~100 MB por ficheiro) no mesmo prefixo S3 que a bronze consome.
+2) compactacao in-place (~128 MB por ficheiro alvo) no mesmo prefixo S3 que a bronze consome,
+   usando a hora de particao do AVRO mais recente por topico (dados reais no S3), nao a data do Airflow.
 """
 from datetime import timedelta
 
@@ -25,7 +26,7 @@ from common.default_args import DEFAULT_ARGS
 
 BUCKET = DATALAKE_BUCKET
 INPUT_PREFIX = "raw/raw-tasy/stream/"
-TARGET_SIZE_MB = 100
+TARGET_SIZE_MB = 128
 
 # Relatorio S3 (boto3): corre no proprio worker Airflow — sem SSH para o Spark.
 _JOB_LOCAL = "/opt/airflow/dags/files/raw_avro_compaction_job.py"
@@ -72,7 +73,7 @@ def raw_tasy_avro_compactor_dag():
             + f"--input-prefix {INPUT_PREFIX} "
             + "--in-place "
             + f"--target-size-mb {TARGET_SIZE_MB} "
-            + "--execution-ts '{{ ts }}' "
+            + "--partition-from-latest-avro "
             + f'--region {AWS_REGION}"'
         ),
         queue="default",

@@ -8,7 +8,7 @@ import os
 DATALAKE_BUCKET = os.environ.get("DATALAKE_BUCKET", "austa-lakehouse-prod-data-lake-169446931765")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "sa-east-1")
 
-# Spark / dbt-spark
+# Spark / dbt-spark (EC2 Spark standalone — override com SPARK_HOST / SPARK_MASTER_URL se necessario)
 SPARK_HOST = os.environ.get("SPARK_HOST", "177.71.255.159")
 SPARK_MASTER_URL = os.environ.get("SPARK_MASTER_URL", "spark://177.71.255.159:7077")
 # Spark jobs (spark-submit) na EC2 Spark; ligação conforme DAG (ex. SSH).

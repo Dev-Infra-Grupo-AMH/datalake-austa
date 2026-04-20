@@ -1,7 +1,7 @@
 """
 Job utilitario para:
 - reportar ultimo arquivo AVRO por topico (ordenado por recencia);
-- compactar AVROs da ultima hora em arquivos alvo de ~100 MB.
+- compactar AVROs da ultima hora em arquivos alvo de ~128 MB por parte.
 
 Modo --in-place: grava staging fora da pasta da hora, apaga AVROs originais na hora,
 copia os compactados para o mesmo prefixo (o que a camada bronze le em raw_path).
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -29,13 +30,36 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Reescreve AVROs na mesma pasta da hora (staging sob __compaction_tmp no topico).",
     )
-    parser.add_argument("--target-size-mb", type=int, default=100)
+    parser.add_argument(
+        "--target-size-mb",
+        type=int,
+        default=128,
+        help="Tamanho alvo (MB) por ficheiro Avro de saida; a ultima parte pode ser menor.",
+    )
     parser.add_argument("--execution-ts")
     parser.add_argument(
         "--hour-lag",
         type=int,
         default=0,
         help="Horas a recuar a partir da hora UTC cheia do execution-ts (0=mesma hora cheia; 1=hora anterior).",
+    )
+    parser.add_argument(
+        "--partition-ts-override",
+        default="",
+        help="ISO UTC (ex. 2026-04-20T22:00:00+00:00) — usa esta hora de particao em vez de execution-ts + hour-lag.",
+    )
+    parser.add_argument(
+        "--only-topic",
+        default="",
+        help="Substring do prefixo do topico (ex. AUSTA_CONTA ou austa.TASY.AUSTA_CONTA); restringe a compactacao.",
+    )
+    parser.add_argument(
+        "--partition-from-latest-avro",
+        action="store_true",
+        help=(
+            "Para cada topico, deriva a hora de particao a partir do ficheiro .avro mais recente no S3 "
+            "(alinha com dados reais; evita usar --execution-ts de um dia sem dados nessa hora)."
+        ),
     )
     parser.add_argument("--region", default="sa-east-1")
     return parser.parse_args()
@@ -165,9 +189,48 @@ def topic_hour_prefix_candidates(topic_prefix: str, ts_utc: datetime) -> list[st
     ]
 
 
+def parse_partition_ts_from_s3_key(key: str) -> datetime | None:
+    """Extrai o inicio UTC da pasta horaria a partir da key (Hive ou plano YYYY/MM/DD/HH)."""
+    m = re.search(r"year=(\d{4})/month=(\d{2})/day=(\d{2})/hour=(\d{2})/", key)
+    if m:
+        y, mo, d, h = m.groups()
+        return datetime(int(y), int(mo), int(d), int(h), 0, 0, tzinfo=timezone.utc)
+    m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/(\d{2})/", key)
+    if m:
+        y, mo, d, h = m.groups()
+        return datetime(int(y), int(mo), int(d), int(h), 0, 0, tzinfo=timezone.utc)
+    return None
+
+
+def latest_partition_ts_from_topic(s3_client, bucket: str, topic_prefix: str) -> datetime | None:
+    """Hora de particao (UTC) do .avro mais recente sob o prefixo do topico."""
+    latest_key: str | None = None
+    latest_mod = None
+    for obj in list_objects(s3_client, bucket, topic_prefix):
+        k = obj["Key"]
+        if not k.endswith(".avro") or "__compaction_tmp" in k:
+            continue
+        if latest_mod is None or obj["LastModified"] > latest_mod:
+            latest_mod = obj["LastModified"]
+            latest_key = k
+    if not latest_key:
+        return None
+    return parse_partition_ts_from_s3_key(latest_key)
+
+
 def compact_mode(args: argparse.Namespace) -> None:
-    if not args.execution_ts:
-        raise ValueError("--execution-ts e obrigatorio em --mode compact")
+    override = (args.partition_ts_override or "").strip()
+    exec_ts = (args.execution_ts or "").strip()
+    partition_from_latest = args.partition_from_latest_avro
+
+    if partition_from_latest and (override or exec_ts):
+        raise ValueError(
+            "Use --partition-from-latest-avro sozinho (sem --execution-ts nem --partition-ts-override)."
+        )
+    if not partition_from_latest and not exec_ts and not override:
+        raise ValueError(
+            "Em --mode compact informe --execution-ts, --partition-ts-override ou --partition-from-latest-avro"
+        )
     if args.in_place and args.output_prefix:
         raise ValueError("Use apenas --in-place ou --output-prefix, nao ambos")
     if not args.in_place and not args.output_prefix:
@@ -177,20 +240,40 @@ def compact_mode(args: argparse.Namespace) -> None:
 
     from pyspark.sql import SparkSession
 
-    execution_ts_utc = datetime.fromisoformat(args.execution_ts.replace("Z", "+00:00")).astimezone(timezone.utc)
-    floored = execution_ts_utc.replace(minute=0, second=0, microsecond=0)
-    partition_ts = floored - timedelta(hours=args.hour_lag)
+    fixed_partition_ts: datetime | None = None
+    execution_label: str
+
+    if partition_from_latest:
+        execution_label = "partition-from-latest-avro"
+    elif override:
+        fixed_partition_ts = datetime.fromisoformat(override.replace("Z", "+00:00")).astimezone(timezone.utc)
+        execution_label = override
+    else:
+        execution_ts_utc = datetime.fromisoformat(exec_ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+        floored = execution_ts_utc.replace(minute=0, second=0, microsecond=0)
+        fixed_partition_ts = floored - timedelta(hours=args.hour_lag)
+        execution_label = exec_ts
 
     s3_client = boto3.client("s3", region_name=args.region)
     topics = list_topic_prefixes_merged(s3_client, args.bucket, args.input_prefix)
+    only = (args.only_topic or "").strip()
+    if only:
+        topics = [t for t in topics if only in t]
 
     print(
         json.dumps(
             {
                 "compact_meta": True,
-                "execution_ts": args.execution_ts,
-                "partition_ts_utc": partition_ts.isoformat(),
+                "partition_policy": (
+                    "latest_avro_per_topic" if partition_from_latest else "fixed_execution_ts_or_override"
+                ),
+                "execution_ts": execution_label,
+                "partition_ts_utc": (
+                    fixed_partition_ts.isoformat() if fixed_partition_ts is not None else None
+                ),
                 "hour_lag": args.hour_lag,
+                "partition_ts_override": bool(override),
+                "only_topic": only or None,
                 "input_prefix": args.input_prefix,
                 "topic_prefix_count": len(topics),
             },
@@ -210,6 +293,24 @@ def compact_mode(args: argparse.Namespace) -> None:
     skipped_topics = 0
 
     for topic_prefix in topics:
+        if partition_from_latest:
+            partition_ts = latest_partition_ts_from_topic(s3_client, args.bucket, topic_prefix)
+            if partition_ts is None:
+                skipped_topics += 1
+                print(
+                    json.dumps(
+                        {
+                            "skip_topic": topic_slug(topic_prefix),
+                            "reason": "no_avro_or_unparseable_partition_from_latest_key",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                continue
+        else:
+            assert fixed_partition_ts is not None
+            partition_ts = fixed_partition_ts
+
         selected_input_prefix = None
         input_objects: list[dict] = []
         for candidate in topic_hour_prefix_candidates(topic_prefix, partition_ts):
@@ -262,6 +363,7 @@ def compact_mode(args: argparse.Namespace) -> None:
             log_payload = {
                 "topic": topic_name,
                 "mode": "in_place",
+                "partition_ts_utc": partition_ts.isoformat(),
                 "input_path": input_path,
                 "staging_path": output_path,
                 "total_input_bytes": total_bytes,
@@ -275,6 +377,7 @@ def compact_mode(args: argparse.Namespace) -> None:
             log_payload = {
                 "topic": topic_name,
                 "mode": "separate_prefix",
+                "partition_ts_utc": partition_ts.isoformat(),
                 "input_path": input_path,
                 "output_path": output_path,
                 "total_input_bytes": total_bytes,
@@ -299,6 +402,11 @@ def compact_mode(args: argparse.Namespace) -> None:
                 for k in _s3_list_keys_with_prefix(s3_client, args.bucket, staging_prefix)
                 if k.endswith(".avro")
             ]
+            if not staging_keys:
+                raise RuntimeError(
+                    "Compactacao abortada: nenhum .avro listado no staging apos write Spark; "
+                    f"originais nao foram apagados. staging_prefix={staging_prefix}"
+                )
             _s3_delete_keys(s3_client, args.bucket, original_keys)
             for src_key in staging_keys:
                 base = src_key.rsplit("/", maxsplit=1)[-1]
